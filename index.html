@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SDR ke Dolby Vision · VERYFIRDAUS</title>
+<style>
+  :root { --bg:#0e0e11; --card:#1a1a20; --fg:#f2f2f5; --mut:#8c8c99; --acc:#7c5cff; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family:-apple-system,system-ui,sans-serif; background:var(--bg); color:var(--fg);
+         min-height:100vh; display:flex; align-items:center; justify-content:center; padding:20px; }
+  .card { background:var(--card); border-radius:20px; padding:24px; width:100%; max-width:420px; }
+  .badge { display:inline-block; font-size:11px; font-weight:800; letter-spacing:1.5px; padding:5px 12px; border-radius:20px; color:#fff; background:linear-gradient(90deg,#7c5cff,#ff5c9d); margin-bottom:12px; }
+  .foot { text-align:center; margin-top:18px; font-size:11px; letter-spacing:1px; color:var(--mut); }
+  h1 { font-size:20px; margin:0 0 4px; }
+  p { color:var(--mut); font-size:14px; margin:0 0 18px; }
+  label.drop { display:block; border:2px dashed #3a3a46; border-radius:14px; padding:28px 12px;
+               text-align:center; color:var(--mut); font-size:14px; cursor:pointer; }
+  input[type=file] { display:none; }
+  .row { margin:16px 0; font-size:14px; }
+  input[type=range] { width:100%; accent-color:var(--acc); }
+  select { width:100%; margin-top:6px; padding:10px; border-radius:10px; border:0; background:#2a2a33; color:var(--fg); font-size:15px; }
+  button { width:100%; border:0; border-radius:12px; padding:14px; font-size:16px; font-weight:600;
+           background:var(--acc); color:#fff; }
+  button:disabled { opacity:.5; }
+  .bar { height:8px; background:#2a2a33; border-radius:4px; overflow:hidden; margin-top:16px; display:none; }
+  .bar div { height:100%; width:0; background:var(--acc); transition:width .4s; }
+  #msg { margin-top:10px; font-size:14px; color:var(--mut); min-height:20px; }
+  a.dl { display:none; margin-top:14px; text-align:center; padding:14px; border-radius:12px;
+         background:#2bb673; color:#fff; font-weight:600; text-decoration:none; }
+  .err { color:#ff6b6b !important; white-space:pre-wrap; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="badge">⚡ BY VERYFIRDAUS</div>
+  <h1>SDR → Dolby Vision</h1>
+  <p>Output MP4 HEVC 10-bit, Dolby Vision Profile 8.4 (terdeteksi di iPhone).</p>
+
+  <label class="drop" id="drop">
+    <span id="fname">Pilih video SDR</span>
+    <input type="file" id="file" accept="video/*">
+  </label>
+
+  <div class="row">
+    Kecerahan HDR: <b id="bv">1.3</b>x
+    <input type="range" id="boost" min="1" max="1.6" step="0.1" value="1.3">
+  </div>
+
+  <div class="row">Resolusi
+    <select id="res"><option value="orig">Asli</option><option value="1080">Upscale ke 1080p</option><option value="4k">Upscale ke 4K (lambat)</option></select>
+  </div>
+  <div class="row">Output
+    <select id="out"><option value="dv">Dolby Vision (HDR)</option><option value="hdr">HDR HLG saja</option><option value="sdr">SDR biasa</option></select>
+  </div>
+  <div class="row"><label><input type="checkbox" id="sharpen" checked style="display:inline"> Jernihkan (denoise + sharpen)</label></div>
+  <div class="row"><label><input type="checkbox" id="compress" style="display:inline"> Compress untuk TikTok (maks 1080p, ~8 Mbps)</label></div>
+  <button id="go" disabled>Konversi</button>
+  <div class="bar" id="bar"><div id="fill"></div></div>
+  <div id="msg"></div>
+  <a class="dl" id="dl">Download hasil</a>
+  <div class="foot">© VERYFIRDAUS · Dolby Vision Converter</div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+$('file').onchange = e => {
+  const f = e.target.files[0];
+  $('fname').textContent = f ? f.name : 'Pilih video SDR';
+  $('go').disabled = !f;
+};
+$('boost').oninput = e => $('bv').textContent = Number(e.target.value).toFixed(1);
+
+function fail(t) { $('msg').className = 'err'; $('msg').textContent = t; $('go').disabled = false; }
+
+$('go').onclick = () => {
+  const f = $('file').files[0];
+  if (!f) return;
+  $('go').disabled = true; $('dl').style.display = 'none';
+  $('msg').className = ''; $('msg').textContent = 'Mengupload...';
+  $('bar').style.display = 'block'; $('fill').style.width = '0%';
+
+  const fd = new FormData();
+  fd.append('video', f);
+  fd.append('boost', $('boost').value);
+  fd.append('res', $('res').value);
+  fd.append('out', $('out').value);
+  fd.append('sharpen', $('sharpen').checked ? '1' : '0');
+  fd.append('compress', $('compress').checked ? '1' : '0');
+
+  const xhr = new XMLHttpRequest();
+  xhr.open('POST', '/upload');
+  xhr.upload.onprogress = e => {
+    if (e.lengthComputable) {
+      $('fill').style.width = (e.loaded / e.total * 10) + '%';
+      $('msg').textContent = 'Mengupload ' + Math.round(e.loaded / e.total * 100) + '%';
+    }
+  };
+  xhr.onerror = () => fail('Upload gagal.');
+  xhr.onload = () => {
+    if (xhr.status !== 200) return fail('Upload ditolak (' + xhr.status + ').');
+    poll(JSON.parse(xhr.responseText).id);
+  };
+  xhr.send(fd);
+};
+
+async function poll(id) {
+  try {
+    const r = await (await fetch('/status/' + id)).json();
+    if (r.error) return fail(r.error);
+    $('fill').style.width = r.pct + '%';
+    $('msg').textContent = r.stage;
+    if (r.done) {
+      $('dl').href = '/download/' + id;
+      $('dl').style.display = 'block';
+      $('go').disabled = false;
+      return;
+    }
+  } catch (e) {}
+  setTimeout(() => poll(id), 2000);
+}
+</script>
+</body>
+</html>
